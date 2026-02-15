@@ -309,4 +309,90 @@ const updateUserCoverImage = asyncHandler(async(req,res)=>{
 
 })
 
-export {registerUser , loginUser , logoutUser, refreshAccessToken , changeCurrentPassword , getCurrentUser, updateAccountDetails , updateUserAvatar ,updateUserCoverImage}
+const getUserChannelProfile = asyncHandler(async(req,res)=>{
+   const {username} = req.params // https:localhost:8000/api/v1/piyushkohli
+
+   if(!username?.trim()){
+    throw new ApiError(400,"username is missing")
+   }
+
+   const channel = await User.aggregate([
+    {
+        $match:{ // it is used tp specify that where the all of the operations are gonne be performes and that is username from where we will move up to the next stage
+            username:username?.toLowerCase()
+        }
+    },
+    {
+        $lookup:{ //it is used to combine two data of different schema like user and subscriber
+            from : "subscription", //subscription schema is being joined with the user
+            localField:"_id", // it is the user._id which is going to be connect with the subscription schema fields
+            foreignField:"channel", // it is the channel field which will connect with the user._id
+            as:"subscribers" //and this connection will be calles as subcriber
+            /*
+            user 1 : channel 1,
+            user2 : channel 1,
+            user3 : channel 1,
+
+            therefore number of subscriber for channel 1 are three
+            */
+        }
+    },
+    {
+        $lookup:{
+            from : "subscription",
+            localField:"_id",
+            foreignField:"subscriber", // not the subscriber field is getting connected with user._id
+            as:"subscribedTo"
+        }
+        /*
+          user 1: channel 1
+          user 1 : channel 2
+          user 1 : channel 4
+
+          so the user 1 has subscribed to channel 1,2 and 4
+        */
+    },
+    {
+        $addFields:{ //it is addinf functions like counting 
+            subscribersCount:{
+                $size:"$subscribers" //it tell number of counts of subscriber
+            },
+            channelSubscribedToCount:{
+                $size:"$subscribedTo" // it tells number of counts of suncribedTo
+            },
+            isSubscribed:{ // it checks the user is the subscriber is in the subscriberlist or not
+                $cond:{
+                    if:{$in:[req.user?._id,"$subscribers.subscriber"]}, 
+                    then:true,
+                    else:false
+                }
+            }
+        }
+    },
+    {
+        $projects:{  // it projects the fields which are goinf to be displayed on the username url
+            fullName:1,
+            username:1,
+            subscriberCount : 1,
+            channelSubscribedToCount:1,
+            isSubscribed:1,
+            avatar:1,
+            coverImage:1,
+            email:1
+        }
+    }
+   ])
+
+   if(!channel?.length){
+    throw new ApiError(404,"channel does not exist")
+   }
+
+   return res
+   .status(200)
+   .json(
+    new ApiResponse(200,channel[0],"User channel fetched successfully")
+   )
+})
+
+
+export {registerUser , loginUser , logoutUser, refreshAccessToken , changeCurrentPassword , getCurrentUser, updateAccountDetails , updateUserAvatar ,updateUserCoverImage ,getUserChannelProfile}
